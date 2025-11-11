@@ -62,17 +62,21 @@ export default {
       lastSavedScore: 0,
       highScores: [],
       lastTime: 0,
-      manualInputThisFrame: false
+      manualInputThisFrame: false,
+      animationFrameId: null
     };
   },
   async mounted() {
     await this.loadHighScores();
     this.reset();
     window.addEventListener('keydown', this.handleKey);
-    requestAnimationFrame(this.gameLoop);
+    this.animationFrameId = requestAnimationFrame(this.gameLoop);
   },
   beforeUnmount() {
     window.removeEventListener('keydown', this.handleKey);
+    if (this.animationFrameId) {
+      cancelAnimationFrame(this.animationFrameId);
+    }
   },
   methods: {
     normalizeAngle(diff) {
@@ -251,9 +255,10 @@ export default {
       this.updateViewPort();
       this.checkCollection();
       this.draw();
-      requestAnimationFrame(this.gameLoop);
+      this.animationFrameId = requestAnimationFrame(this.gameLoop);
     },
     draw() {
+      if (!this.$refs.mainCanvas) return;
       const ctx = this.$refs.mainCanvas.getContext('2d');
       ctx.clearRect(0, 0, 600, 600);
 
@@ -339,17 +344,46 @@ export default {
       ctx.save();
       ctx.translate(tankX, tankY);
       ctx.rotate(this.tank.angle);
+      // Treads - left and right sides with distinguishable segments
+      ctx.fillStyle = '#333333';
+      ctx.strokeStyle = '#222222';
+      ctx.lineWidth = 1;
+
+      // Left tread
+      ctx.fillRect(-35, -20, 10, 40);
+      for (let y = -20; y <= 20; y += 5) {
+        ctx.beginPath();
+        ctx.moveTo(-35, y);
+        ctx.lineTo(-25, y);
+        ctx.stroke();
+      }
+
+      // Right tread
+      ctx.fillRect(25, -20, 10, 40);
+      for (let y = -20; y <= 20; y += 5) {
+        ctx.beginPath();
+        ctx.moveTo(25, y);
+        ctx.lineTo(35, y);
+        ctx.stroke();
+      }
+
+      // Body
       ctx.fillStyle = '#A0522D';
       ctx.fillRect(-30, -15, 60, 30);
       ctx.strokeStyle = '#8B4513';
       ctx.lineWidth = 3;
       ctx.strokeRect(-30, -15, 60, 30);
+
+      // Turret
       ctx.fillStyle = '#696969';
       ctx.beginPath();
       ctx.arc(0, 0, 15, 0, Math.PI * 2);
       ctx.fill();
+
+      // Barrel
       ctx.fillStyle = '#333333';
       ctx.fillRect(15, -3, 20, 6);
+
       ctx.restore();
     }
   }
