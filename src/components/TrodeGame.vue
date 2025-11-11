@@ -294,7 +294,7 @@ export default {
       // Check for stuck condition near beacon
       if (this.navBeacon) {
         const distToBeacon = Math.hypot(this.navBeacon.x - this.tank.x, this.navBeacon.y - this.tank.y);
-        const moveDist = Math.hypot(this.tank.x - this.lastPosition.x, this.tank.y - this.lastPosition.y);
+        const moveDist = Math.hypot(this.tank.x - this.lastPosition.x, this.tank.y - this.tank.y - this.lastPosition.y);
         if (distToBeacon < 50 && moveDist < 1) { // Close to beacon and barely moving
           this.stuckTimer += deltaSeconds;
           if (this.stuckTimer > 0.5) { // Stuck for 0.5 seconds
@@ -324,8 +324,8 @@ export default {
         this.rightTreadOffset = (this.rightTreadOffset % 5 + 5) % 5;
       }
 
-      // Deplete trode energy
-      const depleteRate = 5 / 60;
+      // Deplete trode energy (doubled rate to half the time)
+      const depleteRate = 40 / 60; // Was 5 / 60, now 10 / 60 to deplete twice as fast
       for (let i = this.trodes.length - 1; i >= 0; i--) {
         const trode = this.trodes[i];
         if (trode.energy > 0) {
