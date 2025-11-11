@@ -380,7 +380,7 @@ export default {
       ctx.save();
       ctx.translate(tankX, tankY);
       ctx.rotate(this.tank.angle);
-      // Treads - left and right sides with distinguishable segments
+      // Treads - left and right sides with distinguishable segments, now out of sync
       ctx.fillStyle = '#333333';
       ctx.strokeStyle = '#000000'; // Black lines for better visibility
       ctx.lineWidth = 2; // Thicker lines
@@ -388,20 +388,22 @@ export default {
       const treadLength = 60;
       const treadThickness = 10;
       const step = 5;
-      let offset = this.treadOffset;
+      const phaseDiff = step / 2; // 2.5 - half phase shift for desynchronization
+      const leftShift = this.treadOffset % step;
+      const rightShift = (this.treadOffset + phaseDiff) % step;
 
-      // Left tread (negative y)
+      // Left tread (negative y, outer at -23, inner at -13)
       ctx.fillRect(-30, -23, treadLength, treadThickness);
-      for (let x = -30 - step + (offset % step); x < 30 + step; x += step) {
+      for (let x = -30 - step + leftShift; x < 30 + step; x += step) {
         ctx.beginPath();
         ctx.moveTo(x, -23);
         ctx.lineTo(x, -13);
         ctx.stroke();
       }
 
-      // Right tread (positive y)
+      // Right tread (positive y, inner at 13, outer at 23)
       ctx.fillRect(-30, 13, treadLength, treadThickness);
-      for (let x = -30 - step + (offset % step); x < 30 + step; x += step) {
+      for (let x = -30 - step + rightShift; x < 30 + step; x += step) {
         ctx.beginPath();
         ctx.moveTo(x, 13);
         ctx.lineTo(x, 23);
