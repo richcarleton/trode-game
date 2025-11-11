@@ -65,7 +65,12 @@ export default {
       manualInputThisFrame: false,
       animationFrameId: null,
       pressedKeys: new Set(),
-      treadOffset: 0
+      leftTreadOffset: 0,
+      rightTreadOffset: 0,
+      currentForwardSpeed: 0,
+      currentRotationSpeed: 0,
+      lastPosition: { x: 600, y: 600 },
+      stuckTimer: 0
     };
   },
   async mounted() {
@@ -95,6 +100,12 @@ export default {
       this.navBeacon = null;
       this.gctScore = 0;
       this.lastSavedScore = 0;
+      this.currentForwardSpeed = 0;
+      this.currentRotationSpeed = 0;
+      this.leftTreadOffset = 0;
+      this.rightTreadOffset = 0;
+      this.lastPosition = { x: 600, y: 600 };
+      this.stuckTimer = 0;
       this.generateHotspots();
       this.updateViewPort();
       this.draw();
@@ -225,19 +236,92 @@ export default {
         this.navBeacon = null;
       }
 
-      // Apply manual movement
-      this.tank.angle += rotation * 2 * deltaSeconds; // 2 rad/s rotation speed
-      const dx_manual = forward * Math.cos(this.tank.angle) * this.tank.speed * deltaSeconds;
-      const dy_manual = forward * Math.sin(this.tank.angle) * this.tank.speed * deltaSeconds;
-      this.tank.x += dx_manual;
-      this.tank.y += dy_manual;
+      // Compute target speeds
+      let targetForwardSpeed = 0;
+      let targetRotationSpeed = 0;
+      if (this.manualInputThisFrame) {
+        targetForwardSpeed = forward * this.tank.speed;
+        targetRotationSpeed = rotation * 2; // rad/s
+      } else if (this.navBeacon) {
+        const dx = this.navBeacon.x - this.tank.x;
+        const dy = this.navBeacon.y - this.tank.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 5) {
+          this.navBeacon = null;
+        } else {
+          const targetAngle = Math.atan2(dy, dx);
+          let diff = this.normalizeAngle(targetAngle - this.tank.angle);
+          if (Math.abs(diff) < 0.05) diff = 0; // Deadzone to prevent wobbling
+          const stopDist = this.tank.speed * 0.1; // easeTime = 0.1s
+          const closeThreshold = stopDist * 2; // Start straightening when within 2x stop distance
+          if (dist < closeThreshold) {
+            targetRotationSpeed = 0; // No rotation when close to beacon
+          } else {
+            const turnSpeed = 2; // rad/s
+            const angleAdjustment = Math.sign(diff) * Math.min(Math.abs(diff), turnSpeed * deltaSeconds);
+            targetRotationSpeed = angleAdjustment / deltaSeconds;
+          }
+          const forwardFactor = Math.cos(diff);
+          targetForwardSpeed = this.tank.speed * Math.max(0, forwardFactor) * Math.min(1, dist / stopDist);
+        }
+      }
+
+      // Update current speeds with acceleration (ease-in/out)
+      const easeTime = 0.1; // 100ms
+      const forwardAccel = this.tank.speed / easeTime;
+      const rotationAccel = 2 / easeTime;
+      const forwardDelta = forwardAccel * deltaSeconds;
+      if (this.currentForwardSpeed < targetForwardSpeed) {
+        this.currentForwardSpeed = Math.min(this.currentForwardSpeed + forwardDelta, targetForwardSpeed);
+      } else if (this.currentForwardSpeed > targetForwardSpeed) {
+        this.currentForwardSpeed = Math.max(this.currentForwardSpeed - forwardDelta, targetForwardSpeed);
+      }
+      const rotationDelta = rotationAccel * deltaSeconds;
+      if (this.currentRotationSpeed < targetRotationSpeed) {
+        this.currentRotationSpeed = Math.min(this.currentRotationSpeed + rotationDelta, targetRotationSpeed);
+      } else if (this.currentRotationSpeed > targetRotationSpeed) {
+        this.currentRotationSpeed = Math.max(this.currentRotationSpeed - rotationDelta, targetRotationSpeed);
+      }
+
+      // Apply movement
+      this.tank.angle += this.currentRotationSpeed * deltaSeconds;
+      const dx = this.currentForwardSpeed * Math.cos(this.tank.angle) * deltaSeconds;
+      const dy = this.currentForwardSpeed * Math.sin(this.tank.angle) * deltaSeconds;
+      this.tank.x += dx;
+      this.tank.y += dy;
       this.clampTankPosition();
 
-      // Animate treads if moving manually
-      const manualSpeed = Math.hypot(dx_manual, dy_manual) / deltaSeconds;
-      if (manualSpeed > 0) {
-        this.treadOffset += forward * -20 * deltaSeconds; // Adjusted sign for correct direction
-        this.treadOffset = (this.treadOffset % 5 + 5) % 5; // Wrap around 5
+      // Check for stuck condition near beacon
+      if (this.navBeacon) {
+        const distToBeacon = Math.hypot(this.navBeacon.x - this.tank.x, this.navBeacon.y - this.tank.y);
+        const moveDist = Math.hypot(this.tank.x - this.lastPosition.x, this.tank.y - this.lastPosition.y);
+        if (distToBeacon < 50 && moveDist < 1) { // Close to beacon and barely moving
+          this.stuckTimer += deltaSeconds;
+          if (this.stuckTimer > 0.5) { // Stuck for 0.5 seconds
+            this.navBeacon = null;
+            this.currentForwardSpeed = 0;
+            this.currentRotationSpeed = 0;
+            this.stuckTimer = 0;
+          }
+        } else {
+          this.stuckTimer = 0;
+        }
+      }
+
+      this.lastPosition = { x: this.tank.x, y: this.tank.y };
+
+      // Animate treads differentially based on forward and rotation
+      const trackHalfWidth = 23; // Approximate from drawing (-23 to 23)
+      const treadAnimRate = 20; // Animation rate at full speed
+      const leftTreadSpeed = this.currentForwardSpeed - this.currentRotationSpeed * trackHalfWidth;
+      const rightTreadSpeed = this.currentForwardSpeed + this.currentRotationSpeed * trackHalfWidth;
+      if (Math.abs(leftTreadSpeed) > 0.01) {
+        this.leftTreadOffset += (leftTreadSpeed / this.tank.speed) * -treadAnimRate * deltaSeconds;
+        this.leftTreadOffset = (this.leftTreadOffset % 5 + 5) % 5;
+      }
+      if (Math.abs(rightTreadSpeed) > 0.01) {
+        this.rightTreadOffset += (rightTreadSpeed / this.tank.speed) * -treadAnimRate * deltaSeconds;
+        this.rightTreadOffset = (this.rightTreadOffset % 5 + 5) % 5;
       }
 
       // Deplete trode energy
@@ -254,36 +338,6 @@ export default {
               resource: trode.resource
             });
             this.trodes.splice(i, 1);
-          }
-        }
-      }
-
-      // Autopilot to navBeacon if no manual input
-      if (this.navBeacon && !this.manualInputThisFrame) {
-        const dx = this.navBeacon.x - this.tank.x;
-        const dy = this.navBeacon.y - this.tank.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist < 20) {
-          this.navBeacon = null;
-        } else {
-          const targetAngle = Math.atan2(dy, dx);
-          let diff = this.normalizeAngle(targetAngle - this.tank.angle);
-          const turnSpeed = 2; // rad/s
-          const angleAdjustment = Math.sign(diff) * Math.min(Math.abs(diff), turnSpeed * deltaSeconds);
-          this.tank.angle += angleAdjustment;
-
-          // Calculate forward movement, reduced if turning sharply
-          const forwardFactor = Math.cos(diff); // 1 if aligned, less if turning
-          const autoDx = Math.cos(this.tank.angle) * this.tank.speed * deltaSeconds * Math.max(0, forwardFactor);
-          const autoDy = Math.sin(this.tank.angle) * this.tank.speed * deltaSeconds * Math.max(0, forwardFactor);
-          this.tank.x += autoDx;
-          this.tank.y += autoDy;
-          this.clampTankPosition();
-
-          const autoSpeed = Math.hypot(autoDx, autoDy) / deltaSeconds;
-          if (autoSpeed > 0) {
-            this.treadOffset -= 20 * deltaSeconds; // Animate treads in autopilot (forward direction)
-            this.treadOffset = (this.treadOffset % 5 + 5) % 5;
           }
         }
       }
@@ -389,8 +443,8 @@ export default {
       const treadThickness = 10;
       const step = 5;
       const phaseDiff = step / 2; // 2.5 - half phase shift for desynchronization
-      const leftShift = this.treadOffset % step;
-      const rightShift = (this.treadOffset + phaseDiff) % step;
+      const leftShift = (this.leftTreadOffset + phaseDiff) % step; // Adjusted for left
+      const rightShift = this.rightTreadOffset % step;
 
       // Left tread (negative y, outer at -23, inner at -13)
       ctx.fillRect(-30, -23, treadLength, treadThickness);
