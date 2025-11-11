@@ -52,7 +52,7 @@ export default {
     return {
       mapSize: { w: 1200, h: 1200 },
       viewPort: { x: 0, y: 0, w: 600, h: 600 },
-      tank: { x: 600, y: 600, angle: 0, speed: 5, trodesCarried: 3 },
+      tank: { x: 600, y: 600, angle: 0, speed: 200, trodesCarried: 3 },
       trodes: [],
       spheres: [],
       resourceHotspots: [],
@@ -63,17 +63,21 @@ export default {
       highScores: [],
       lastTime: 0,
       manualInputThisFrame: false,
-      animationFrameId: null
+      animationFrameId: null,
+      pressedKeys: new Set(),
+      treadOffset: 0
     };
   },
   async mounted() {
     await this.loadHighScores();
     this.reset();
-    window.addEventListener('keydown', this.handleKey);
+    window.addEventListener('keydown', this.handleKeyDown);
+    window.addEventListener('keyup', this.handleKeyUp);
     this.animationFrameId = requestAnimationFrame(this.gameLoop);
   },
   beforeUnmount() {
-    window.removeEventListener('keydown', this.handleKey);
+    window.removeEventListener('keydown', this.handleKeyDown);
+    window.removeEventListener('keyup', this.handleKeyUp);
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);
     }
@@ -85,7 +89,7 @@ export default {
       return diff;
     },
     async reset() {
-      this.tank = { x: 600, y: 600, angle: 0, speed: 5, trodesCarried: 3 };
+      this.tank = { x: 600, y: 600, angle: 0, speed: 200, trodesCarried: 3 };
       this.trodes = [];
       this.spheres = [];
       this.navBeacon = null;
@@ -108,28 +112,20 @@ export default {
         });
       }
     },
-    handleKey(e) {
-      this.manualInputThisFrame = true;
-      if (e.key === 'r' || e.key === 'R') {
+    handleKeyDown(e) {
+      const key = e.key.toLowerCase();
+      if (key === 'r') {
         this.reset();
         return;
       }
-      if (e.key === 'Control' && this.tank.trodesCarried > 0) {
+      if (key === 'control' && this.tank.trodesCarried > 0) {
         this.placeTrode();
         return;
       }
-      if (e.key === 'a' || e.key === 'ArrowLeft') this.tank.angle -= 0.1;
-      if (e.key === 'd' || e.key === 'ArrowRight') this.tank.angle += 0.1;
-      if (e.key === 'w' || e.key === 'ArrowUp') {
-        this.tank.x += Math.cos(this.tank.angle) * this.tank.speed;
-        this.tank.y += Math.sin(this.tank.angle) * this.tank.speed;
-      }
-      if (e.key === 's' || e.key === 'ArrowDown') {
-        this.tank.x -= Math.cos(this.tank.angle) * this.tank.speed;
-        this.tank.y -= Math.sin(this.tank.angle) * this.tank.speed;
-      }
-      this.clampTankPosition();
-      this.updateViewPort();
+      this.pressedKeys.add(key);
+    },
+    handleKeyUp(e) {
+      this.pressedKeys.delete(e.key.toLowerCase());
     },
     handleClick(e) {
       const rect = this.$refs.mainCanvas.getBoundingClientRect();
@@ -207,50 +203,90 @@ export default {
         this.highScores = [];
       }
     },
-    gameLoop() {
-      const now = performance.now();
+    gameLoop(now) {
       if (this.lastTime === 0) {
         this.lastTime = now;
-      } else {
-        const delta = now - this.lastTime;
-        const deltaSeconds = delta / 1000;
-        const depleteRate = 5 / 60;
-
-        for (let i = this.trodes.length - 1; i >= 0; i--) {
-          const trode = this.trodes[i];
-          if (trode.energy > 0) {
-            const deplete = depleteRate * deltaSeconds;
-            trode.energy = Math.max(0, trode.energy - deplete);
-            if (trode.energy <= 0 && trode.resource) {
-              this.spheres.push({
-                x: trode.miningArea.x + Math.random() * trode.miningArea.w,
-                y: trode.miningArea.y + Math.random() * trode.miningArea.h,
-                resource: trode.resource
-              });
-              this.trodes.splice(i, 1);
-            }
-          }
-        }
-
-        if (this.navBeacon && !this.manualInputThisFrame) {
-          const dx = this.navBeacon.x - this.tank.x;
-          const dy = this.navBeacon.y - this.tank.y;
-          const dist = Math.hypot(dx, dy);
-          if (dist < 20) {
-            this.navBeacon = null;
-          } else {
-            const targetAngle = Math.atan2(dy, dx);
-            let diff = this.normalizeAngle(targetAngle - this.tank.angle);
-            const turnSpeed = 0.2;
-            this.tank.angle += Math.sign(diff) * Math.min(Math.abs(diff), turnSpeed);
-            this.tank.x += Math.cos(this.tank.angle) * this.tank.speed;
-            this.tank.y += Math.sin(this.tank.angle) * this.tank.speed;
-            this.clampTankPosition();
-          }
-        }
-        this.manualInputThisFrame = false;
       }
+      const delta = now - this.lastTime;
+      const deltaSeconds = delta / 1000;
       this.lastTime = now;
+
+      // Handle key inputs for movement and rotation
+      let forward = 0;
+      if (this.pressedKeys.has('w') || this.pressedKeys.has('arrowup')) forward += 1;
+      if (this.pressedKeys.has('s') || this.pressedKeys.has('arrowdown')) forward -= 1;
+      let rotation = 0;
+      if (this.pressedKeys.has('a') || this.pressedKeys.has('arrowleft')) rotation -= 1;
+      if (this.pressedKeys.has('d') || this.pressedKeys.has('arrowright')) rotation += 1;
+
+      this.manualInputThisFrame = forward !== 0 || rotation !== 0;
+
+      if (this.manualInputThisFrame && this.navBeacon) {
+        this.navBeacon = null;
+      }
+
+      // Apply manual movement
+      this.tank.angle += rotation * 2 * deltaSeconds; // 2 rad/s rotation speed
+      const dx_manual = forward * Math.cos(this.tank.angle) * this.tank.speed * deltaSeconds;
+      const dy_manual = forward * Math.sin(this.tank.angle) * this.tank.speed * deltaSeconds;
+      this.tank.x += dx_manual;
+      this.tank.y += dy_manual;
+      this.clampTankPosition();
+
+      // Animate treads if moving manually
+      const manualSpeed = Math.hypot(dx_manual, dy_manual) / deltaSeconds;
+      if (manualSpeed > 0) {
+        this.treadOffset += forward * -20 * deltaSeconds; // Adjusted sign for correct direction
+        this.treadOffset = (this.treadOffset % 5 + 5) % 5; // Wrap around 5
+      }
+
+      // Deplete trode energy
+      const depleteRate = 5 / 60;
+      for (let i = this.trodes.length - 1; i >= 0; i--) {
+        const trode = this.trodes[i];
+        if (trode.energy > 0) {
+          const deplete = depleteRate * deltaSeconds;
+          trode.energy = Math.max(0, trode.energy - deplete);
+          if (trode.energy <= 0 && trode.resource) {
+            this.spheres.push({
+              x: trode.miningArea.x + Math.random() * trode.miningArea.w,
+              y: trode.miningArea.y + Math.random() * trode.miningArea.h,
+              resource: trode.resource
+            });
+            this.trodes.splice(i, 1);
+          }
+        }
+      }
+
+      // Autopilot to navBeacon if no manual input
+      if (this.navBeacon && !this.manualInputThisFrame) {
+        const dx = this.navBeacon.x - this.tank.x;
+        const dy = this.navBeacon.y - this.tank.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 20) {
+          this.navBeacon = null;
+        } else {
+          const targetAngle = Math.atan2(dy, dx);
+          let diff = this.normalizeAngle(targetAngle - this.tank.angle);
+          const turnSpeed = 2; // rad/s
+          const angleAdjustment = Math.sign(diff) * Math.min(Math.abs(diff), turnSpeed * deltaSeconds);
+          this.tank.angle += angleAdjustment;
+
+          // Calculate forward movement, reduced if turning sharply
+          const forwardFactor = Math.cos(diff); // 1 if aligned, less if turning
+          const autoDx = Math.cos(this.tank.angle) * this.tank.speed * deltaSeconds * Math.max(0, forwardFactor);
+          const autoDy = Math.sin(this.tank.angle) * this.tank.speed * deltaSeconds * Math.max(0, forwardFactor);
+          this.tank.x += autoDx;
+          this.tank.y += autoDy;
+          this.clampTankPosition();
+
+          const autoSpeed = Math.hypot(autoDx, autoDy) / deltaSeconds;
+          if (autoSpeed > 0) {
+            this.treadOffset -= 20 * deltaSeconds; // Animate treads in autopilot (forward direction)
+            this.treadOffset = (this.treadOffset % 5 + 5) % 5;
+          }
+        }
+      }
 
       this.updateViewPort();
       this.checkCollection();
@@ -346,24 +382,29 @@ export default {
       ctx.rotate(this.tank.angle);
       // Treads - left and right sides with distinguishable segments
       ctx.fillStyle = '#333333';
-      ctx.strokeStyle = '#222222';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#000000'; // Black lines for better visibility
+      ctx.lineWidth = 2; // Thicker lines
 
-      // Left tread
-      ctx.fillRect(-35, -20, 10, 40);
-      for (let y = -20; y <= 20; y += 5) {
+      const treadLength = 60;
+      const treadThickness = 10;
+      const step = 5;
+      let offset = this.treadOffset;
+
+      // Left tread (negative y)
+      ctx.fillRect(-30, -23, treadLength, treadThickness);
+      for (let x = -30 - step + (offset % step); x < 30 + step; x += step) {
         ctx.beginPath();
-        ctx.moveTo(-35, y);
-        ctx.lineTo(-25, y);
+        ctx.moveTo(x, -23);
+        ctx.lineTo(x, -13);
         ctx.stroke();
       }
 
-      // Right tread
-      ctx.fillRect(25, -20, 10, 40);
-      for (let y = -20; y <= 20; y += 5) {
+      // Right tread (positive y)
+      ctx.fillRect(-30, 13, treadLength, treadThickness);
+      for (let x = -30 - step + (offset % step); x < 30 + step; x += step) {
         ctx.beginPath();
-        ctx.moveTo(25, y);
-        ctx.lineTo(35, y);
+        ctx.moveTo(x, 13);
+        ctx.lineTo(x, 23);
         ctx.stroke();
       }
 
