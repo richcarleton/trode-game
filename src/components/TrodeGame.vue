@@ -2,7 +2,17 @@
 <!-- eslint-disable vue/multi-word-component-names -->
 <template>
   <div class="game-container">
-    <canvas ref="canvas" width="600" height="600" @click="handleClick"></canvas>
+    <div class="gameplay-container">
+      <canvas ref="mainCanvas" width="600" height="600" @click="handleClick"></canvas>
+      <Minimap
+        :map-size="mapSize"
+        :tank="tank"
+        :trodes="trodes"
+        :spheres="spheres"
+        :resource-hotspots="resourceHotspots"
+        :nav-beacon="navBeacon"
+      />
+    </div>
     <div class="ui">
       <p>GCT Harvest: {{ gctScore.toFixed(1) }}</p>
       <p>Trodes Carried: {{ tank.trodesCarried }}/3 | Active: {{ trodes.length }}</p>
@@ -20,6 +30,7 @@
 
 <script>
 import { saveScore, getHighScores } from '@/firebase';
+import Minimap from './Minimap.vue';
 
 const RESOURCES = [
   { name: 'Aurorium', symbol: 'AuR', value: 5.2, color: '#00FFAA' },
@@ -35,6 +46,8 @@ const RESOURCES = [
 ];
 
 export default {
+  name: 'TrodeGame',
+  components: { Minimap },
   data() {
     return {
       mapSize: { w: 1200, h: 1200 },
@@ -43,7 +56,7 @@ export default {
       trodes: [],
       spheres: [],
       resourceHotspots: [],
-      navBeacon: null,  // {x, y} or null (invisible)
+      navBeacon: null,
       flash: { color: null, timer: 0 },
       gctScore: 0,
       lastSavedScore: 0,
@@ -101,7 +114,6 @@ export default {
         this.placeTrode();
         return;
       }
-      // Movement keys cancel auto-nav
       if (e.key === 'a' || e.key === 'ArrowLeft') this.tank.angle -= 0.1;
       if (e.key === 'd' || e.key === 'ArrowRight') this.tank.angle += 0.1;
       if (e.key === 'w' || e.key === 'ArrowUp') {
@@ -116,18 +128,16 @@ export default {
       this.updateViewPort();
     },
     handleClick(e) {
-      const rect = this.$refs.canvas.getBoundingClientRect();
+      const rect = this.$refs.mainCanvas.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
       const worldX = mouseX + this.viewPort.x;
       const worldY = mouseY + this.viewPort.y;
-      // Clamp to map
       this.navBeacon = {
         x: Math.max(0, Math.min(this.mapSize.w, worldX)),
         y: Math.max(0, Math.min(this.mapSize.h, worldY))
       };
-      // Immediately start moving forward and pivot (first frame handled in loop)
-      this.flash.color = [255, 255, 0];  // Yellow flash for beacon set
+      this.flash.color = [255, 255, 0];
       this.flash.timer = 10;
       this.updateViewPort();
       this.draw();
@@ -200,9 +210,8 @@ export default {
       } else {
         const delta = now - this.lastTime;
         const deltaSeconds = delta / 1000;
-        const depleteRate = 5 / 60; // 5% per minute
+        const depleteRate = 5 / 60;
 
-        // Deplete trodes
         for (let i = this.trodes.length - 1; i >= 0; i--) {
           const trode = this.trodes[i];
           if (trode.energy > 0) {
@@ -219,27 +228,23 @@ export default {
           }
         }
 
-        // Auto-nav: if beacon and no manual input this frame
         if (this.navBeacon && !this.manualInputThisFrame) {
           const dx = this.navBeacon.x - this.tank.x;
           const dy = this.navBeacon.y - this.tank.y;
           const dist = Math.hypot(dx, dy);
           if (dist < 20) {
-            // Reached destination
             this.navBeacon = null;
           } else {
-            // Pivot towards beacon
             const targetAngle = Math.atan2(dy, dx);
             let diff = this.normalizeAngle(targetAngle - this.tank.angle);
-            const turnSpeed = 0.2;  // rad/frame max
+            const turnSpeed = 0.2;
             this.tank.angle += Math.sign(diff) * Math.min(Math.abs(diff), turnSpeed);
-            // Move forward
             this.tank.x += Math.cos(this.tank.angle) * this.tank.speed;
             this.tank.y += Math.sin(this.tank.angle) * this.tank.speed;
             this.clampTankPosition();
           }
         }
-        this.manualInputThisFrame = false;  // Reset for next frame
+        this.manualInputThisFrame = false;
       }
       this.lastTime = now;
 
@@ -249,10 +254,9 @@ export default {
       requestAnimationFrame(this.gameLoop);
     },
     draw() {
-      const ctx = this.$refs.canvas.getContext('2d');
+      const ctx = this.$refs.mainCanvas.getContext('2d');
       ctx.clearRect(0, 0, 600, 600);
 
-      // Flash overlay
       if (this.flash.timer > 0) {
         ctx.globalAlpha = 0.3;
         ctx.fillStyle = `rgb(${this.flash.color.join(',')})`;
@@ -261,11 +265,9 @@ export default {
         this.flash.timer--;
       }
 
-      // Terrain background
       ctx.fillStyle = '#CC6600';
       ctx.fillRect(0, 0, 600, 600);
 
-      // Resource hotspots
       this.resourceHotspots.forEach(h => {
         const hx = h.x - this.viewPort.x;
         const hy = h.y - this.viewPort.y;
@@ -285,12 +287,10 @@ export default {
         }
       });
 
-      // Trodes (40x40 octagons)
       this.trodes.forEach(t => {
         const tx = t.x - this.viewPort.x;
         const ty = t.y - this.viewPort.y;
         if (tx > -50 && tx < 650 && ty > -50 && ty < 650) {
-          // Octagon
           ctx.beginPath();
           ctx.moveTo(tx + 20 * Math.cos(0), ty + 20 * Math.sin(0));
           for (let i = 1; i < 8; i++) {
@@ -304,14 +304,12 @@ export default {
           ctx.lineWidth = 2;
           ctx.stroke();
 
-          // Energy circle
           const alpha = t.energy / 15;
           ctx.fillStyle = `rgba(0, 255, 0, ${alpha})`;
           ctx.beginPath();
           ctx.arc(tx, ty, 12, 0, Math.PI * 2);
           ctx.fill();
 
-          // Mining area
           const mx = t.miningArea.x - this.viewPort.x;
           const my = t.miningArea.y - this.viewPort.y;
           ctx.strokeStyle = '#00FFFF';
@@ -322,7 +320,6 @@ export default {
         }
       });
 
-      // Product spheres (15x15)
       this.spheres.forEach(s => {
         const sx = s.x - this.viewPort.x;
         const sy = s.y - this.viewPort.y;
@@ -337,7 +334,6 @@ export default {
         }
       });
 
-      // Tank
       const tankX = this.tank.x - this.viewPort.x;
       const tankY = this.tank.y - this.viewPort.y;
       ctx.save();
@@ -362,10 +358,20 @@ export default {
 
 <style scoped>
 .game-container { text-align: center; }
+.gameplay-container {
+  position: relative;
+  display: inline-block;
+}
 canvas { 
   border: 2px solid #8B4513; 
   background: #CC6600; 
   cursor: crosshair;
+}
+.minimap-container {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
 }
 .ui { 
   margin-top: 10px; 
