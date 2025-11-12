@@ -172,7 +172,7 @@ export default {
 .gameplay-container { 
   position: relative; 
   display: inline-block; 
-  /* REMOVED padding-top - minimap overlays directly */
+  top:40px;
 }
 canvas { 
   border: 2px solid #8B4513; 

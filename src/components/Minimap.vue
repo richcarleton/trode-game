@@ -127,7 +127,7 @@ export default {
 <style scoped>
 .minimap-container[data-v-a00135b6] {
     position: absolute;
-    top: 32px;
+    top: 5px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 10;
