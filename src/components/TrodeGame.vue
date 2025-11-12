@@ -94,7 +94,7 @@ export default {
       return diff;
     },
     async reset() {
-      this.tank = { x: 600, y: 600, angle: 0, speed: 200, trodesCarried: 3 };
+      this.tank = { x: 600, y: 600, angle: 0, speed: 200, trodesCarried: 8 };
       this.trodes = [];
       this.spheres = [];
       this.navBeacon = null;
