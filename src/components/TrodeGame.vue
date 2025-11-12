@@ -35,7 +35,9 @@
 <script>
 import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
 import Minimap from './Minimap.vue';
-import { useGameLogic } from '@/composables/useGameLogic';
+import { useGameState } from '@/composables/useGameState';
+import { useGameInput } from '@/composables/useGameInput';
+import { useGameLoop } from '@/composables/useGameLoop';
 import { useHotspotGenerator } from '@/composables/useHotspotGenerator';
 import { getHighScores } from '@/firebase';
 
@@ -48,18 +50,48 @@ export default {
     const highScores = ref([]);
 
     // ------------------------------------------------------------------
-    // 1. Game logic – returns renderGameObjects(ctx)
+    // 1. Game State
     // ------------------------------------------------------------------
     const {
       mapSize, viewPort, tank, trodes, spheres, projectiles,
       resourceHotspots, navBeacon, flash,
-      reset, handleClick,
-      handleKeyDown, handleKeyUp,
-      renderGameObjects
-    } = useGameLogic({ mainCanvas, gctScore });
+      // eslint-disable-next-line no-unused-vars
+      lastTime, pressedKeys, leftTreadOffset, rightTreadOffset,
+      currentForwardSpeed, currentRotationSpeed, lastPosition, stuckTimer,
+      reset, updateViewPort, clampTank,
+      TANK_SPEED, ROT_SPEED, PROJECTILE_SPEED, DEPLETION_RATE
+    } = useGameState({ gctScore });
 
     // ------------------------------------------------------------------
-    // 2. Hotspot generator
+    // 2. Game Input
+    // ------------------------------------------------------------------
+    const {
+      handleKeyDown, handleKeyUp, handleClick,
+      placeTrode, fireProjectile, checkCollection,
+      normalizeAngle
+    } = useGameInput({
+      tank, trodes, projectiles, navBeacon, resourceHotspots,
+      gctScore, pressedKeys, updateViewPort,
+      mainCanvas, mapSize, viewPort, reset, spheres
+    });
+
+    // ------------------------------------------------------------------
+    // 3. Game Loop
+    // ------------------------------------------------------------------
+    const { renderGameObjects } = useGameLoop({
+      mainCanvas,
+      mapSize,
+      viewPort,
+      tank, trodes, spheres, projectiles,
+      flash, pressedKeys, leftTreadOffset, rightTreadOffset,
+      currentForwardSpeed, currentRotationSpeed, lastPosition, stuckTimer,
+      navBeacon,
+      TANK_SPEED, ROT_SPEED, PROJECTILE_SPEED, DEPLETION_RATE,
+      clampTank, updateViewPort, checkCollection, normalizeAngle
+    });
+
+    // ------------------------------------------------------------------
+    // 4. Hotspot generator
     // ------------------------------------------------------------------
     const { generateHotspots, drawHotspot } = useHotspotGenerator({
       resourceHotspots,
@@ -67,7 +99,7 @@ export default {
     });
 
     // ------------------------------------------------------------------
-    // 3. FULL DRAW – background + hotspots + game objects
+    // 5. FULL DRAW
     // ------------------------------------------------------------------
     const draw = () => {
       if (!mainCanvas.value) return;
@@ -80,7 +112,7 @@ export default {
       ctx.fillStyle = '#CC6600';
       ctx.fillRect(0, 0, 600, 600);
 
-      // 2. HOTSPOTS (first, under everything)
+      // 2. HOTSPOTS
       resourceHotspots.value.forEach(h => {
         const hx = h.x - viewPort.value.x;
         const hy = h.y - viewPort.value.y;
@@ -89,19 +121,17 @@ export default {
         }
       });
 
-      // 3. Game objects (trodes, spheres, tank, etc.)
+      // 3. Game objects
       renderGameObjects(ctx);
     };
 
     // ------------------------------------------------------------------
-    // 4. React to changes
+    // 6. Reactivity
     // ------------------------------------------------------------------
-    watch([resourceHotspots, viewPort, tank, trodes, spheres, projectiles], () => {
-      draw();
-    }, { deep: true });
+    watch([resourceHotspots, viewPort, tank, trodes, spheres, projectiles], draw, { deep: true });
 
     // ------------------------------------------------------------------
-    // 5. Lifecycle
+    // 7. Lifecycle
     // ------------------------------------------------------------------
     onMounted(async () => {
       highScores.value = await getHighScores();
@@ -109,8 +139,9 @@ export default {
 
       generateHotspots();
       reset();
-      draw();  // initial draw
+      draw();
 
+      // Attach **our** key handlers (they already call placeTrode / fireProjectile)
       window.addEventListener('keydown', handleKeyDown);
       window.addEventListener('keyup', handleKeyUp);
     });
@@ -125,7 +156,12 @@ export default {
       resourceHotspots, navBeacon, flash,
       gctScore, highScores,
       handleClick, reset, draw,
-      mainCanvas
+      mainCanvas,
+      // keep them in the return so the template can reference them if needed
+      // eslint-disable-next-line no-unused-vars
+      placeTrode,
+      // eslint-disable-next-line no-unused-vars
+      fireProjectile
     };
   }
 };

@@ -1,149 +1,22 @@
-// src/composables/useGameLogic.js
-import { ref, watch, nextTick } from 'vue';
-import { saveScore } from '@/firebase';
+// src/composables/useGameLoop.js
+import { watch, nextTick } from 'vue';
 
-const TANK_SPEED = 200;
-const ROT_SPEED = 2;
-const PROJECTILE_SPEED = 400;
-const DEPLETION_RATE = 40 / 60;
-
-export function useGameLogic({ mainCanvas, gctScore }) {
-  // ------------------------------------------------------------------
-  // Reactive game objects
-  // ------------------------------------------------------------------
-  const mapSize = ref({ w: 1200, h: 1200 });
-  const viewPort = ref({ x: 0, y: 0, w: 600, h: 600 });
-
-  const tank = ref({ x: 600, y: 600, angle: 0, speed: TANK_SPEED, trodesCarried: 8 });
-  const trodes = ref([]);
-  const spheres = ref([]);
-  const projectiles = ref([]);
-  const resourceHotspots = ref([]);
-  const navBeacon = ref(null);
-  const flash = ref({ color: null, timer: 0 });
-
-  // ------------------------------------------------------------------
-  // Internal animation state
-  // ------------------------------------------------------------------
-  const lastTime = ref(0);
-  const pressedKeys = ref(new Set());
-  const leftTreadOffset = ref(0);
-  const rightTreadOffset = ref(0);
-  const currentForwardSpeed = ref(0);
-  const currentRotationSpeed = ref(0);
-  const lastPosition = ref({ x: 600, y: 600 });
-  const stuckTimer = ref(0);
+export function useGameLoop({
+  mainCanvas,
+  mapSize, viewPort, tank, trodes, spheres, projectiles,
+  flash, pressedKeys, leftTreadOffset, rightTreadOffset,
+  currentForwardSpeed, currentRotationSpeed, lastPosition, stuckTimer,
+  navBeacon, TANK_SPEED, ROT_SPEED, DEPLETION_RATE,
+  clampTank, updateViewPort, checkCollection, normalizeAngle
+}) {
   let animationId = null;
+  const lastTime = { value: 0 };
 
   // ------------------------------------------------------------------
-  // Helper utilities
+  // Render only game objects
   // ------------------------------------------------------------------
-  const normalizeAngle = diff => {
-    while (diff > Math.PI) diff -= Math.PI * 2;
-    while (diff < -Math.PI) diff += Math.PI * 2;
-    return diff;
-  };
-
-  const clampTank = () => {
-    tank.value.x = Math.max(0, Math.min(mapSize.value.w, tank.value.x));
-    tank.value.y = Math.max(0, Math.min(mapSize.value.h, tank.value.y));
-  };
-
-  const updateViewPort = () => {
-    viewPort.value.x = tank.value.x - viewPort.value.w / 2;
-    viewPort.value.y = tank.value.y - viewPort.value.h / 2;
-    viewPort.value.x = Math.max(0, Math.min(mapSize.value.w - viewPort.value.w, viewPort.value.x));
-    viewPort.value.y = Math.max(0, Math.min(mapSize.value.h - viewPort.value.h, viewPort.value.y));
-  };
-
-  // ------------------------------------------------------------------
-  // Input handling
-  // ------------------------------------------------------------------
-  const handleKeyDown = e => {
-    const k = e.key.toLowerCase();
-    if (k === 'r') { reset(); return; }
-    if (k === 'control' && tank.value.trodesCarried > 0) { placeTrode(); return; }
-    if (k === ' ') { e.preventDefault(); fireProjectile(); return; }
-    pressedKeys.value.add(k);
-  };
-
-  const handleKeyUp = e => pressedKeys.value.delete(e.key.toLowerCase());
-
-  // ---- click to set nav beacon (NO FLASH) ------------------------------------------------
-  const handleClick = e => {
-    if (!mainCanvas.value) return;
-    const rect = mainCanvas.value.getBoundingClientRect();
-    const mx = e.clientX - rect.left + viewPort.value.x;
-    const my = e.clientY - rect.top + viewPort.value.y;
-    navBeacon.value = {
-      x: Math.max(0, Math.min(mapSize.value.w, mx)),
-      y: Math.max(0, Math.min(mapSize.value.h, my))
-    };
-    updateViewPort();
-  };
-
-  // ------------------------------------------------------------------
-  // Trode placement (NO FLASH)
-  // ------------------------------------------------------------------
-  const findNearestHotspot = (tx, ty) => {
-    let nearest = null, minDist = Infinity;
-    for (const h of resourceHotspots.value) {
-      const d = Math.hypot(tx - h.x, ty - h.y);
-      if (d < h.radius && d < minDist) { minDist = d; nearest = h; }
-    }
-    return nearest;
-  };
-
-  const placeTrode = () => {
-    if (tank.value.trodesCarried <= 0) return;
-    const hotspot = findNearestHotspot(tank.value.x, tank.value.y);
-    trodes.value.push({
-      x: tank.value.x, y: tank.value.y,
-      energy: 15.0, mined: 0,
-      resource: hotspot ? hotspot.resource : null,
-      miningArea: { x: tank.value.x - 50, y: tank.value.y - 50, w: 100, h: 100 }
-    });
-    tank.value.trodesCarried--;
-    // REMOVED FLASH
-  };
-
-  // ------------------------------------------------------------------
-  // Projectile
-  // ------------------------------------------------------------------
-  const fireProjectile = () => {
-    const bl = 35;
-    projectiles.value.push({
-      x: tank.value.x + bl * Math.cos(tank.value.angle),
-      y: tank.value.y + bl * Math.sin(tank.value.angle),
-      angle: tank.value.angle,
-      speed: PROJECTILE_SPEED,
-      lifetime: 2
-    });
-  };
-
-  // ------------------------------------------------------------------
-  // Collection & scoring
-  // ------------------------------------------------------------------
-  const checkCollection = () => {
-    let harvested = false;
-    spheres.value = spheres.value.filter(s => {
-      if (Math.hypot(tank.value.x - s.x, tank.value.y - s.y) < 20) {
-        gctScore.value += s.resource.value;
-        harvested = true;
-        return false;
-      }
-      return true;
-    });
-    if (harvested && gctScore.value >= 5) {
-      saveScore(gctScore.value);
-    }
-  };
-
-  // ------------------------------------------------------------------
-  // Render only game objects (trodes, spheres, projectiles, tank)
-  // ------------------------------------------------------------------
-  const renderGameObjects = (ctx) => {
-    // FLASH OVERLAY (only for projectile hit)
+  const renderGameObjects = ctx => {
+    /* FLASH OVERLAY */
     if (flash.value.timer > 0) {
       ctx.globalAlpha = 0.3;
       ctx.fillStyle = `rgb(${flash.value.color.join(',')})`;
@@ -152,14 +25,12 @@ export function useGameLogic({ mainCanvas, gctScore }) {
       flash.value.timer--;
     }
 
-    // TRODES
+    /* TRODES */
     trodes.value.forEach(t => {
       const tx = t.x - viewPort.value.x, ty = t.y - viewPort.value.y;
       if (tx > -50 && tx < 650 && ty > -50 && ty < 650) {
-        ctx.save();
-        ctx.translate(tx, ty);
-        ctx.beginPath();
-        ctx.moveTo(20, 0);
+        ctx.save(); ctx.translate(tx, ty);
+        ctx.beginPath(); ctx.moveTo(20, 0);
         for (let i = 1; i < 8; i++) {
           const a = (i / 8) * Math.PI * 2;
           ctx.lineTo(20 * Math.cos(a), 20 * Math.sin(a));
@@ -181,7 +52,7 @@ export function useGameLogic({ mainCanvas, gctScore }) {
       }
     });
 
-    // SPHERES
+    /* SPHERES */
     spheres.value.forEach(s => {
       const sx = s.x - viewPort.value.x, sy = s.y - viewPort.value.y;
       if (sx > -15 && sx < 615 && sy > -15 && sy < 615) {
@@ -191,7 +62,7 @@ export function useGameLogic({ mainCanvas, gctScore }) {
       }
     });
 
-    // PROJECTILES
+    /* PROJECTILES */
     projectiles.value.forEach(p => {
       const px = p.x - viewPort.value.x, py = p.y - viewPort.value.y;
       if (px > -10 && px < 610 && py > -10 && py < 610) {
@@ -204,7 +75,7 @@ export function useGameLogic({ mainCanvas, gctScore }) {
       }
     });
 
-    // TANK
+    /* TANK */
     const tx = tank.value.x - viewPort.value.x, ty = tank.value.y - viewPort.value.y;
     ctx.save(); ctx.translate(tx, ty); ctx.rotate(tank.value.angle);
     const treadL = 60, thick = 10, step = 5, phase = step / 2;
@@ -239,7 +110,7 @@ export function useGameLogic({ mainCanvas, gctScore }) {
     const dt = now - lastTime.value, ds = Math.min(dt / 1000, 0.05);
     lastTime.value = now;
 
-    // ----- INPUT -----
+    /* INPUT */
     let fwd = 0, rot = 0;
     if (pressedKeys.value.has('w') || pressedKeys.value.has('arrowup')) fwd += 1;
     if (pressedKeys.value.has('s') || pressedKeys.value.has('arrowdown')) fwd -= 1;
@@ -248,7 +119,7 @@ export function useGameLogic({ mainCanvas, gctScore }) {
     const manual = fwd || rot;
     if (manual && navBeacon.value) navBeacon.value = null;
 
-    // ----- TARGET SPEEDS -----
+    /* TARGET SPEEDS */
     let targetF = 0, targetR = 0;
     if (manual) {
       targetF = fwd * TANK_SPEED;
@@ -276,7 +147,7 @@ export function useGameLogic({ mainCanvas, gctScore }) {
       }
     }
 
-    // ----- ACCELERATION -----
+    /* ACCELERATION */
     const ease = 0.1;
     const fAcc = TANK_SPEED / ease, rAcc = ROT_SPEED / ease;
     const fΔ = fAcc * ds, rΔ = rAcc * ds;
@@ -287,13 +158,13 @@ export function useGameLogic({ mainCanvas, gctScore }) {
       ? Math.min(currentRotationSpeed.value + rΔ, targetR)
       : Math.max(currentRotationSpeed.value - rΔ, targetR);
 
-    // ----- MOVE TANK -----
+    /* MOVE TANK */
     tank.value.angle += currentRotationSpeed.value * ds;
     tank.value.x += currentForwardSpeed.value * Math.cos(tank.value.angle) * ds;
     tank.value.y += currentForwardSpeed.value * Math.sin(tank.value.angle) * ds;
     clampTank();
 
-    // ----- STUCK CHECK -----
+    /* STUCK CHECK */
     if (navBeacon.value) {
       const dB = Math.hypot(navBeacon.value.x - tank.value.x, navBeacon.value.y - tank.value.y);
       const moved = Math.hypot(tank.value.x - lastPosition.value.x, tank.value.y - lastPosition.value.y);
@@ -310,7 +181,7 @@ export function useGameLogic({ mainCanvas, gctScore }) {
     }
     lastPosition.value = { x: tank.value.x, y: tank.value.y };
 
-    // ----- TREAD ANIMATION -----
+    /* TREAD ANIMATION */
     const halfW = 23, rate = 20;
     const lSp = currentForwardSpeed.value - currentRotationSpeed.value * halfW;
     const rSp = currentForwardSpeed.value + currentRotationSpeed.value * halfW;
@@ -323,7 +194,7 @@ export function useGameLogic({ mainCanvas, gctScore }) {
       rightTreadOffset.value = (rightTreadOffset.value % 5 + 5) % 5;
     }
 
-    // ----- PROJECTILES -----
+    /* PROJECTILES */
     projectiles.value = projectiles.value.filter(p => {
       p.x += p.speed * Math.cos(p.angle) * ds;
       p.y += p.speed * Math.sin(p.angle) * ds;
@@ -332,14 +203,14 @@ export function useGameLogic({ mainCanvas, gctScore }) {
         const t = trodes.value[i];
         if (Math.hypot(p.x - t.x, p.y - t.y) < 20) {
           t.energy += 5;
-          flash.value = { color: [0, 255, 0], timer: 5 };  // ONLY FLASH ON HIT
+          flash.value = { color: [0, 255, 0], timer: 5 };
           return false;
         }
       }
       return p.lifetime > 0 && p.x >= 0 && p.x <= mapSize.value.w && p.y >= 0 && p.y <= mapSize.value.h;
     });
 
-    // ----- TRODE MINING -----
+    /* TRODE MINING */
     for (let i = trodes.value.length - 1; i >= 0; i--) {
       const t = trodes.value[i];
       if (t.energy > 0) {
@@ -361,7 +232,6 @@ export function useGameLogic({ mainCanvas, gctScore }) {
     updateViewPort();
     checkCollection();
 
-    // Render only game objects — hotspots are drawn in TrodeGame.vue
     if (mainCanvas.value) {
       const ctx = mainCanvas.value.getContext('2d');
       ctx.imageSmoothingEnabled = false;
@@ -372,21 +242,7 @@ export function useGameLogic({ mainCanvas, gctScore }) {
   };
 
   // ------------------------------------------------------------------
-  // Reset
-  // ------------------------------------------------------------------
-  const reset = async () => {
-    tank.value = { x: 600, y: 600, angle: 0, speed: TANK_SPEED, trodesCarried: 8 };
-    trodes.value = []; spheres.value = []; projectiles.value = [];
-    navBeacon.value = null; gctScore.value = 0;
-    currentForwardSpeed.value = currentRotationSpeed.value = 0;
-    leftTreadOffset.value = rightTreadOffset.value = 0;
-    lastPosition.value = { x: 600, y: 600 }; stuckTimer.value = 0;
-    updateViewPort();
-    await nextTick();
-  };
-
-  // ------------------------------------------------------------------
-  // Start loop when canvas is ready
+  // Start / stop loop
   // ------------------------------------------------------------------
   watch(mainCanvas, async canvas => {
     if (canvas) {
@@ -396,12 +252,5 @@ export function useGameLogic({ mainCanvas, gctScore }) {
     }
   }, { immediate: true });
 
-  return {
-    mapSize, viewPort, tank, trodes, spheres, projectiles,
-    resourceHotspots, navBeacon, flash,
-    reset, handleClick,
-    handleKeyDown, handleKeyUp,
-    placeTrode, fireProjectile,
-    renderGameObjects
-  };
+  return { renderGameObjects };
 }
