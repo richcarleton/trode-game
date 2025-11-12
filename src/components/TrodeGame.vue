@@ -141,7 +141,6 @@ export default {
       reset();
       draw();
 
-      // Attach **our** key handlers (they already call placeTrode / fireProjectile)
       window.addEventListener('keydown', handleKeyDown);
       window.addEventListener('keyup', handleKeyUp);
     });
@@ -157,7 +156,6 @@ export default {
       gctScore, highScores,
       handleClick, reset, draw,
       mainCanvas,
-      // keep them in the return so the template can reference them if needed
       // eslint-disable-next-line no-unused-vars
       placeTrode,
       // eslint-disable-next-line no-unused-vars
@@ -168,17 +166,40 @@ export default {
 </script>
 
 <style scoped>
-.game-container { text-align:center; }
-.gameplay-container { position:relative; display:inline-block; }
+.game-container { 
+  text-align: center; 
+}
+.gameplay-container { 
+  position: relative; 
+  display: inline-block; 
+  /* REMOVED padding-top - minimap overlays directly */
+}
 canvas { 
-  border:2px solid #8B4513; 
-  background:#CC6600; 
-  cursor:crosshair; 
+  border: 2px solid #8B4513; 
+  background: #CC6600; 
+  cursor: crosshair; 
   image-rendering: pixelated;
   image-rendering: -moz-crisp-edges;
+  display: block; 
 }
-.minimap-container { position:absolute; top:10px; left:50%; transform:translateX(-50%); }
-.ui { margin-top:10px; color:#FFCC00; font-family:monospace; }
-button { background:#8B4513; color:#FFCC00; border:1px solid #CC6600; padding:8px 16px; margin:5px; cursor:pointer; }
-.highscores { margin-top:20px; color:#00FFFF; text-align:left; max-height:200px; overflow-y:auto; }
+.ui { 
+  margin-top: 10px; 
+  color: #FFCC00; 
+  font-family: monospace; 
+}
+button { 
+  background: #8B4513; 
+  color: #FFCC00; 
+  border: 1px solid #CC6600; 
+  padding: 8px 16px; 
+  margin: 5px; 
+  cursor: pointer; 
+}
+.highscores { 
+  margin-top: 20px; 
+  color: #00FFFF; 
+  text-align: left; 
+  max-height: 200px; 
+  overflow-y: auto; 
+}
 </style>

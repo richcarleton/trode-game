@@ -20,7 +20,6 @@ export default {
   },
   mounted() {
     this.drawMinimap();
-    // Re-draw on prop changes for reactivity
     this.$watch(() => [this.tank, this.trodes, this.spheres, this.resourceHotspots, this.navBeacon], () => {
       this.drawMinimap();
     }, { deep: true });
@@ -32,32 +31,28 @@ export default {
       const scaleX = canvas.width / this.mapSize.w;
       const scaleY = canvas.height / this.mapSize.h;
 
-      // Clear to transparent
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Background and border at 40% opacity
       ctx.globalAlpha = 0.4;
-      ctx.fillStyle = '#331A00';  // Dark rusty
+      ctx.fillStyle = '#331A00';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+      ctx.globalAlpha = 1.0;
       ctx.strokeStyle = '#8B4513';
       ctx.lineWidth = 2;
       ctx.strokeRect(0, 0, canvas.width, canvas.height);
 
-      // Markers at 65% opacity
       ctx.globalAlpha = 0.65;
 
-      // Resource hotspots (small colored dots)
       this.resourceHotspots.forEach(h => {
         const mx = h.x * scaleX;
         const my = h.y * scaleY;
         ctx.fillStyle = h.resource.color;
         ctx.beginPath();
-        ctx.arc(mx, my, 4, 0, Math.PI * 2);  // Small dot
+        ctx.arc(mx, my, 4, 0, Math.PI * 2);
         ctx.fill();
       });
 
-      // Active Trodes (gray octagons, tiny)
       this.trodes.forEach(t => {
         const mx = t.x * scaleX;
         const my = t.y * scaleY;
@@ -67,7 +62,7 @@ export default {
         ctx.beginPath();
         for (let i = 0; i < 8; i++) {
           const ang = (i / 8) * Math.PI * 2;
-          const x = 2 * Math.cos(ang);  // Scaled down
+          const x = 2 * Math.cos(ang);
           const y = 2 * Math.sin(ang);
           if (i === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
@@ -79,7 +74,6 @@ export default {
         ctx.stroke();
         ctx.restore();
 
-        // Energy ring (faint green)
         const alpha = t.energy / 15;
         ctx.fillStyle = `rgba(0, 255, 0, ${alpha * 0.5})`;
         ctx.beginPath();
@@ -87,7 +81,6 @@ export default {
         ctx.fill();
       });
 
-      // Product spheres (tiny glowing points)
       this.spheres.forEach(s => {
         const mx = s.x * scaleX;
         const my = s.y * scaleY;
@@ -100,7 +93,6 @@ export default {
         ctx.stroke();
       });
 
-      // Nav Beacon (yellow triangle, if active)
       if (this.navBeacon) {
         const mx = this.navBeacon.x * scaleX;
         const my = this.navBeacon.y * scaleY;
@@ -116,7 +108,6 @@ export default {
         ctx.stroke();
       }
 
-      // Player tank (blue dot, centered)
       const px = this.tank.x * scaleX;
       const py = this.tank.y * scaleY;
       ctx.fillStyle = '#0000FF';
@@ -125,9 +116,8 @@ export default {
       ctx.fill();
       ctx.strokeStyle = '#FFFFFF';
       ctx.lineWidth = 1;
-      ctx.stroke();  // Glow border
+      ctx.stroke();
 
-      // Reset alpha
       ctx.globalAlpha = 1.0;
     }
   }
@@ -135,13 +125,18 @@ export default {
 </script>
 
 <style scoped>
-.minimap-container {
-  position: absolute;
-  top: 10px;
+.minimap-container[data-v-a00135b6] {
+    position: absolute;
+    top: 32px;
   left: 50%;
   transform: translateX(-50%);
+  z-index: 10;
   display: inline-block;
 }
 .minimap-canvas {
+  background: rgba(0,0,0,0.3);
+  border: 1px solid #8B4513;
+  box-shadow: 0 0 10px rgba(255,255,255,0.3);
+  display: block;
 }
 </style>
