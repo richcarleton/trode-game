@@ -10,7 +10,7 @@ export function useGameState({ gctScore }) {
   const mapSize = ref({ w: 1200, h: 1200 });
   const viewPort = ref({ x: 0, y: 0, w: 600, h: 600 });
 
-  const tank = ref({ x: 600, y: 600, angle: 0, speed: TANK_SPEED, trodesCarried: 8 });
+  const tank = ref({ x: 600, y: 600, angle: 0, turretAngle: 0, speed: TANK_SPEED, trodesCarried: 8 });
   const trodes = ref([]);
   const spheres = ref([]);
   const projectiles = ref([]);
@@ -28,7 +28,7 @@ export function useGameState({ gctScore }) {
   const stuckTimer = ref(0);
 
   const reset = async () => {
-    tank.value = { x: 600, y: 600, angle: 0, speed: TANK_SPEED, trodesCarried: 8 };
+    tank.value = { x: 600, y: 600, angle: 0, turretAngle: 0, speed: TANK_SPEED, trodesCarried: 8 };
     trodes.value = []; spheres.value = []; projectiles.value = [];
     navBeacon.value = null; gctScore.value = 0;
     currentForwardSpeed.value = currentRotationSpeed.value = 0;

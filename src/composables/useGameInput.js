@@ -33,7 +33,15 @@ export function useGameInput({
       fireProjectile(); 
       return; 
     }
-    pressedKeys.value.add(k);                 // .value fixed
+    if (k === 'q') {
+      tank.value.turretAngle -= 0.15;
+      return;
+    }
+    if (k === 'e') {
+      tank.value.turretAngle += 0.15;
+      return;
+    }
+    pressedKeys.value.add(k);
   };
 
   const handleKeyUp = e => pressedKeys.value.delete(e.key.toLowerCase());  // FIXED: .delete → .delete
@@ -83,9 +91,9 @@ export function useGameInput({
   const fireProjectile = () => {
     const bl = 35;
     projectiles.value.push({
-      x: tank.value.x + bl * Math.cos(tank.value.angle),  // FIXED: tank.value
-      y: tank.value.y + bl * Math.sin(tank.value.angle),
-      angle: tank.value.angle,
+      x: tank.value.x + bl * Math.cos(tank.value.turretAngle),
+      y: tank.value.y + bl * Math.sin(tank.value.turretAngle),
+      angle: tank.value.turretAngle,
       speed: 400,
       lifetime: 2
     });

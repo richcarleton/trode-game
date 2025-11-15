@@ -82,8 +82,13 @@ export function useGameRender({
     ctx.strokeStyle = '#8B4513'; ctx.lineWidth = 3; ctx.strokeRect(-30, -15, 60, 30);
     ctx.fillStyle = '#696969';
     ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2); ctx.fill();
+    
+    // Draw turret at separate angle
+    ctx.save();
+    ctx.rotate(tank.value.turretAngle - tank.value.angle);
     ctx.fillStyle = '#333333';
     ctx.fillRect(15, -3, 20, 6);
+    ctx.restore();
     ctx.restore();
   };
 
